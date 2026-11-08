@@ -73,6 +73,7 @@ struct ClosedCaseAirPods:Equatable {
     static var saved:String?{(try? String(contentsOf:targetURL,encoding:.utf8)).map(normalized)}
     // The same bytes an earlier build packaged, so saved calibrations keep matching.
     static func save(_ pair:ClosedCaseAirPods) throws {
+        CaseStepArt.remember(productID:pair.productID)
         guard saved != pair.address else{return}
         try FileManager.default.createDirectory(at:targetURL.deletingLastPathComponent(),withIntermediateDirectories:true)
         try Data(pair.address.utf8).write(to:targetURL,options:.atomic)

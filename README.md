@@ -107,6 +107,9 @@ Settings also has:
 - **Smoothness**: steadiness when still, fast moves, and glide
 - **Scroll**: on or off, speed, and direction (Standard or Inverted)
 
+The setup and pointing screens show the case of the AirPods you connect: the Pro
+case for AirPods Pro, or the AirPods 3/4/5 case.
+
 The back tap is new and tuned less than the front tap, so it can miss now and then.
 
 On the tested AirPods, a session ends about 30 minutes after the lid closes. To
