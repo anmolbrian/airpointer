@@ -521,7 +521,12 @@ private final class SettingsPage:NSObject {
     private let steadiness=NSSlider(value:0.5,minValue:0,maxValue:1,target:nil,action:nil)
     private let snappiness=NSSlider(value:14,minValue:0,maxValue:40,target:nil,action:nil)
     private let glide=NSSlider(value:0.03,minValue:0,maxValue:0.1,target:nil,action:nil)
-    private let backTap=InkSwitch(),twistScroll=InkSwitch(),scrollReverse=InkSwitch()
+    private let backTap=InkSwitch(),twistScroll=InkSwitch(),scrollReverse=InkSwitch(),openAtLogin=InkSwitch()
+    private let loginNote=rkLabel("Starts AirPointer in the menu bar when you log in.",12,.regular,.secondaryLabelColor)
+    private func applyLogin(){
+        openAtLogin.setOn(LoginItem.isEnabled || LoginItem.needsApproval,animated:false)
+        rkSetText(loginNote,LoginItem.needsApproval ? "Allow AirPointer in System Settings → General → Login Items.":"Starts AirPointer in the menu bar when you log in.")
+    }
     private let scrollSpeed=NSSlider(value:1,minValue:0.3,maxValue:3,target:nil,action:nil)
     private let steadinessValue=rkLabel("",13,.medium),snappinessValue=rkLabel("",13,.medium),glideValue=rkLabel("",13,.medium),scrollSpeedValue=rkLabel("",13,.medium)
     // Steadiness 0…1 maps to the filter's resting cutoff 3.5 Hz…0.4 Hz on a log scale (default 1.2 Hz ≈ 0.49).
@@ -549,6 +554,10 @@ private final class SettingsPage:NSObject {
         back.setAccessibilityLabel("Back to Pointer")
         column.addFull(hmRow([back]));column.gap(4)
         column.addFull(rkLabel("Settings",22,.bold))
+        column.addHeader("General")
+        openAtLogin.setAccessibilityLabel("Open at login")
+        openAtLogin.onChange={[weak self] on in LoginItem.set(on);UserDefaults.standard.set(true,forKey:LoginItem.askedKey);self?.applyLogin()}
+        column.addFull(hmSettingRow("Open at login",detail:loginNote,openAtLogin))
         column.addHeader("AirPods")
         pairs.target=self;pairs.action=#selector(changed(_:));pairs.setAccessibilityLabel("AirPods to connect to")
         column.addFull(hmSettingRow("Connect to",nil,pairs))
@@ -609,7 +618,7 @@ private final class SettingsPage:NSObject {
         rkSetText(speedValue,String(format:"%.1f×",state.speed))
         speed.setAccessibilityValueDescription(String(format:"%.1f times normal speed",state.speed))
         clickSound.setOn(state.clickSound,animated:false)
-        applyExtras()
+        applyExtras();applyLogin()
     }
     private func applyExtras(){
         let minCutoff=ClosedCasePointerFilter.tuning("smoothingMinCutoff",1.2,0.4...3.5)

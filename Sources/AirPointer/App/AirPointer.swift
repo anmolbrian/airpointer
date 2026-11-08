@@ -64,7 +64,7 @@ final class App: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
         if needsSetup{showSetup()}
-        else{showHome()}
+        else{showHome();DispatchQueue.main.asyncAfter(deadline:.now()+0.8){LoginItem.offerIfNeeded()}}
     }
 
     @objc func recalibrate() {
@@ -184,7 +184,10 @@ final class App: NSObject, NSApplicationDelegate {
 @main
 struct AirPointerMain {
 static func main() {
-if CommandLine.arguments.contains("--check-audio-output-policy") {
+if CommandLine.arguments.contains("--unregister-login-item") {
+    // Local edit: used by the uninstall script to remove the login item before the app is deleted.
+    exit(LoginItem.set(false) ? 0:1)
+} else if CommandLine.arguments.contains("--check-audio-output-policy") {
     runAudioOutputPolicyChecks()
 } else if let index=CommandLine.arguments.firstIndex(of:"--check-closed-case-tap") {
     let fixtures=CommandLine.arguments.indices.contains(index+1) ? URL(fileURLWithPath:CommandLine.arguments[index+1]):nil
