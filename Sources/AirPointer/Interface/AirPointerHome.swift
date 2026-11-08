@@ -529,6 +529,8 @@ private final class SettingsPage:NSObject {
         rkSetText(loginNote,LoginItem.needsApproval ? "Allow AirPointer in System Settings → General → Login Items.":"Starts AirPointer in the menu bar when you log in.")
     }
     private let scrollSpeed=NSSlider(value:1,minValue:0.3,maxValue:3,target:nil,action:nil)
+    private let backFirmness=NSSlider(value:0.3,minValue:0.15,maxValue:0.8,target:nil,action:nil)
+    private let backFirmnessValue=rkLabel("",13,.medium)
     private let steadinessValue=rkLabel("",13,.medium),snappinessValue=rkLabel("",13,.medium),glideValue=rkLabel("",13,.medium),scrollSpeedValue=rkLabel("",13,.medium)
     // Steadiness 0…1 maps to the filter's resting cutoff 3.5 Hz…0.4 Hz on a log scale (default 1.2 Hz ≈ 0.49).
     private static func cutoff(_ v:Double)->Double{3.5*pow(0.4/3.5,v)}
@@ -585,6 +587,7 @@ private final class SettingsPage:NSObject {
         column.addHeader("Right click")
         backTap.setAccessibilityLabel("Tap the back of the case to right-click");backTap.onChange={[weak self] _ in self?.extrasChanged(nil)}
         column.addFull(hmSettingRow("Tap the back of the case","Right-clicks. Holding Control while you tap the front also right-clicks.",backTap))
+        column.addFull(sliderRow(backFirmness,"Back tap firmness","Lighter taps","Ignore grip shifts",backFirmnessValue))
         column.addHeader("Scroll")
         twistScroll.setAccessibilityLabel("Twist to scroll");twistScroll.onChange={[weak self] _ in self?.extrasChanged(nil)}
         column.addFull(hmSettingRow("Twist to scroll","Turn the case like a key, past about 15°. The pointer holds still while you scroll.",twistScroll))
@@ -631,6 +634,7 @@ private final class SettingsPage:NSObject {
         backTap.setOn(PointerExtras.backTapRightClick,animated:false);twistScroll.setOn(PointerExtras.twistScroll,animated:false)
         scrollDirection.selectItem(at:PointerExtras.scrollReverse ? 1:0)
         scrollSpeed.doubleValue=PointerExtras.scrollSpeed;rkSetText(scrollSpeedValue,String(format:"%.1f×",PointerExtras.scrollSpeed))
+        backFirmness.doubleValue=PointerExtras.backTapFirmness;rkSetText(backFirmnessValue,String(format:"%.2f g",PointerExtras.backTapFirmness));backFirmness.isEnabled=backTap.isOn
         scrollSpeed.isEnabled=twistScroll.isOn;scrollDirection.isEnabled=twistScroll.isOn
     }
     @objc private func extrasChanged(_ sender:Any?){
@@ -640,6 +644,7 @@ private final class SettingsPage:NSObject {
         d.set(glide.doubleValue<0.002 ? 0:(glide.doubleValue*1000).rounded()/1000,forKey:"glideTime")
         d.set(backTap.isOn,forKey:"backTapRightClick");d.set(twistScroll.isOn,forKey:"twistScroll");d.set(scrollDirection.indexOfSelectedItem==1,forKey:"scrollReverse")
         d.set((scrollSpeed.doubleValue*10).rounded()/10,forKey:"scrollSpeed")
+        d.set((backFirmness.doubleValue*100).rounded()/100,forKey:"backTapFirmness")
         applyExtras()
     }
     @objc private func resetSmoothing(){PointerExtras.resetSmoothing();applyExtras()}

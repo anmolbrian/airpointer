@@ -40,6 +40,8 @@ enum PointerExtras{
     static var twistScroll:Bool{flag("twistScroll")}
     static var scrollReverse:Bool{flag("scrollReverse")}
     static var scrollSpeed:Double{ClosedCasePointerFilter.tuning("scrollSpeed",1,0.2...4)}
+    // The weakest push that counts as a back tap. Shifting your grip is usually softer.
+    static var backTapFirmness:Double{ClosedCasePointerFilter.tuning("backTapFirmness",0.3,0.15...0.8)}
     // Twist past this many degrees to start scrolling; it stops 5° inside it.
     static let twistStart=15.0
     static func resetSmoothing(){for key in ["smoothingMinCutoff","smoothingBeta","glideTime"]{UserDefaults.standard.removeObject(forKey:key)}}
@@ -546,9 +548,12 @@ final class ClosedCaseSession: NSObject {
     private var tapDetector=ClosedCaseTapDetector(),recentPoints:[(t:Double,point:CGPoint)]=[],tapHold:CGPoint?
     // A tap on the back pushes the sensor the opposite way; it right-clicks. Taps from the other side
     // within echoGap of an accepted tap are the case rocking back, not a new tap.
-    private var backTapDetector:ClosedCaseTapDetector={var d=ClosedCaseTapDetector();d.direction = -ClosedCaseTapDetector.tapDirection;return d}()
-    private var lastAcceptedTap:(t:Double,back:Bool)?
-    private static let echoGap=0.35
+    // Nearly every front tap also trips the back detector as the case rocks back, so a back tap waits
+    // backWindow for a front impact: the earlier, firmer push decides. Front taps click at once.
+    private var backTapDetector:ClosedCaseTapDetector={var d=ClosedCaseTapDetector();d.direction = -ClosedCaseTapDetector.tapDirection;d.alignmentNeeded=0.8;return d}()
+    private var lastAcceptedTap:(impact:Double,back:Bool)?
+    private var pendingBack:(since:Double,impact:Double,jolt:Double,repeated:Bool,host:Double)?
+    private static let echoGap=0.35,backWindow=0.06
     private var scrolling=false,scrollHold:CGPoint?,scrollRate=0.0,scrollCarry=0.0,lastScrollTick=0.0
     private var lastClick:(uptime:Double,position:CGPoint,count:Int64)?
     private var closedAt=0.0,startedAt=0.0,helperStartedAt=0.0,stoppedAt=0.0,busyRetries=0
@@ -792,6 +797,7 @@ final class ClosedCaseSession: NSObject {
         if !stopping && helper?.isRunning == true{readMotion()}
         glideCursor(now)
         tickScroll(now)
+        decidePendingBack(now)
         if enabled && closedCaseShouldPause(motionAge:now-lastHost){
             pause("Lost the case’s motion. Pointing resumes when it’s back.");resumeAfterDrop=true
         }
@@ -861,28 +867,35 @@ final class ClosedCaseSession: NSObject {
             let backOn=tapLearner==nil && tapTest==nil && enabled && calibrated && PointerExtras.backTapRightClick
             let backEvents=backOn ? backTapDetector.feed(rows):backTapDetector.reset()
             backTapDetector.ignored=[]
-            func tapTime(_ e:ClosedCaseTapDetector.Event)->Double{if case .tap(let since,_,_)=e{return since};return .infinity}
-            let merged=(tapEvents.map{($0,false)}+backEvents.map{($0,true)}).sorted{tapTime($0.0)<tapTime($1.0)}
-            for (event,back) in merged{
-                switch event {
-                case .release:tapHold=nil
+            if !backOn{pendingBack=nil}
+            for event in backEvents{
+                switch event{
+                case .release:if lastAcceptedTap?.back == true{tapHold=nil}
                 case .tap(let since,let jolt,let repeated):
-                    if let last=lastAcceptedTap,last.back != back,since-last.t<Self.echoGap{
-                        try? log?.write(contentsOf:Data(String(format:"tap: ignored %@ tap at %.2f, echo of the %@ tap\n",back ? "back":"front",since,last.back ? "back":"front").utf8))
-                        continue
+                    let impact=backTapDetector.lastTap
+                    if let last=lastAcceptedTap,!last.back,abs(impact-last.impact)<Self.echoGap{
+                        logTap(String(format:"ignored back push at %.2f (%.2f g), rebound of the front tap",since,jolt));continue
                     }
-                    lastAcceptedTap=(since,back)
-                    let at=recentPoints.last{$0.t<since}?.point ?? smooth;tapHold=at
-                    if enabled{
-                        let control=CGEventSource.flagsState(.combinedSessionState).contains(.maskControl)
-                        let right=back || control
-                        let decided=ProcessInfo.processInfo.systemUptime
-                        if let tapTest{tapTest(.click)}else{postClick(at,right:right)}
-                        let clicked=ProcessInfo.processInfo.systemUptime
-                        if clickSound{TapClickSound.shared.play()}
-                        let sounded=ProcessInfo.processInfo.systemUptime
-                        try? log?.write(contentsOf:Data(String(format:"tap: %@click at %.2f, jolt %.2f g, %.0f ms after it began%@, %.0f ms after arrival, %.1f ms reading, %.1f ms posting, %.1f ms sound\n",right ? (back ? "right (back tap) ":"right (control) "):"",since,jolt,1e3*((rows.last?[2] ?? 0)*1e-6-since),repeated ? ", repeat":"",1e3*(decided-(rows.last?[3] ?? decided)),1e3*(decided-readAt),1e3*(clicked-decided),1e3*(sounded-clicked)).utf8))
+                    pendingBack=(since,impact,jolt,repeated,ProcessInfo.processInfo.systemUptime)
+                }
+            }
+            for event in tapEvents{
+                switch event{
+                case .release:if lastAcceptedTap?.back != true{tapHold=nil}
+                case .tap(let since,let jolt,let repeated):
+                    let impact=tapDetector.lastTap
+                    if let p=pendingBack,abs(p.impact-impact)<Self.echoGap{
+                        pendingBack=nil
+                        if p.impact<impact-0.002,p.jolt>=jolt*1.15,p.jolt>=PointerExtras.backTapFirmness{
+                            acceptTap(since:p.since,impact:p.impact,jolt:p.jolt,repeated:p.repeated,back:true,note:String(format:", front push %.2f g came after",jolt))
+                            continue
+                        }
+                        logTap(String(format:"ignored back push at %.2f (%.2f g), the front push (%.2f g) %@",p.since,p.jolt,jolt,p.impact<impact ? "was firmer":"came first"))
                     }
+                    if let last=lastAcceptedTap,last.back,abs(impact-last.impact)<Self.echoGap{
+                        logTap(String(format:"ignored front push at %.2f (%.2f g), rebound of the back tap",since,jolt));continue
+                    }
+                    acceptTap(since:since,impact:impact,jolt:jolt,repeated:repeated,back:false,note:String(format:", %.1f ms reading",1e3*(ProcessInfo.processInfo.systemUptime-readAt)))
                 }
             }
             guard let result=motion.feed(rows),
@@ -965,6 +978,26 @@ final class ClosedCaseSession: NSObject {
         guard AXIsProcessTrusted(),NSScreen.screens.indices.contains(screenIndex),
               let number=NSScreen.screens[screenIndex].deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else{return nil}
         return CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
+    }
+    private func logTap(_ text:String){try? log?.write(contentsOf:Data("tap: \(text)\n".utf8))}
+    private func acceptTap(since:Double,impact:Double,jolt:Double,repeated:Bool,back:Bool,note:String){
+        lastAcceptedTap=(impact,back)
+        let at=recentPoints.last{$0.t<since}?.point ?? smooth;tapHold=at
+        guard enabled else{return}
+        let control=CGEventSource.flagsState(.combinedSessionState).contains(.maskControl)
+        let right=back || control
+        if let tapTest{tapTest(.click)}else{postClick(at,right:right)}
+        if clickSound{TapClickSound.shared.play()}
+        logTap(String(format:"%@click at %.2f, jolt %.2f g%@%@",right ? (back ? "right (back tap) ":"right (control) "):"",since,jolt,repeated ? ", repeat":"",note))
+    }
+    // A back tap with no front push inside backWindow is a real back tap, if it's firm enough.
+    private func decidePendingBack(_ now:Double){
+        guard let p=pendingBack,now-p.host>=Self.backWindow else{return}
+        pendingBack=nil
+        guard p.jolt>=PointerExtras.backTapFirmness else{
+            logTap(String(format:"ignored back push at %.2f, %.2f g is under the back-tap firmness %.2f g",p.since,p.jolt,PointerExtras.backTapFirmness));return
+        }
+        acceptTap(since:p.since,impact:p.impact,jolt:p.jolt,repeated:p.repeated,back:true,note:"")
     }
     // Twist-to-scroll. Past twistStart degrees of twist the pointer holds still and the page scrolls,
     // faster the further the twist; back inside twistStart-5 it stops and pointing resumes.
