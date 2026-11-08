@@ -102,7 +102,7 @@ Settings also has:
 
 - **Open at login**, which the app offers once after setup
 - **Smoothness**: steadiness when still, fast moves, and glide
-- **Scroll**: on or off, speed, and direction
+- **Scroll**: on or off, speed, and direction (Standard or Inverted)
 
 The back tap is new and tuned less than the front tap, so it can miss now and then.
 

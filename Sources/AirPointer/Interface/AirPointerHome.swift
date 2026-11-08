@@ -521,7 +521,8 @@ private final class SettingsPage:NSObject {
     private let steadiness=NSSlider(value:0.5,minValue:0,maxValue:1,target:nil,action:nil)
     private let snappiness=NSSlider(value:14,minValue:0,maxValue:40,target:nil,action:nil)
     private let glide=NSSlider(value:0.03,minValue:0,maxValue:0.1,target:nil,action:nil)
-    private let backTap=InkSwitch(),twistScroll=InkSwitch(),scrollReverse=InkSwitch(),openAtLogin=InkSwitch()
+    private let backTap=InkSwitch(),twistScroll=InkSwitch(),openAtLogin=InkSwitch()
+    private let scrollDirection=NSPopUpButton()
     private let loginNote=rkLabel("Starts AirPointer in the menu bar when you log in.",12,.regular,.secondaryLabelColor)
     private func applyLogin(){
         openAtLogin.setOn(LoginItem.isEnabled || LoginItem.needsApproval,animated:false)
@@ -588,8 +589,9 @@ private final class SettingsPage:NSObject {
         twistScroll.setAccessibilityLabel("Twist to scroll");twistScroll.onChange={[weak self] _ in self?.extrasChanged(nil)}
         column.addFull(hmSettingRow("Twist to scroll","Turn the case like a key, past about 15°. The pointer holds still while you scroll.",twistScroll))
         column.addFull(sliderRow(scrollSpeed,"Scroll speed","Slower","Faster",scrollSpeedValue))
-        scrollReverse.setAccessibilityLabel("Reverse scroll direction");scrollReverse.onChange={[weak self] _ in self?.extrasChanged(nil)}
-        column.addFull(hmSettingRow("Reverse direction",nil,scrollReverse))
+        scrollDirection.addItems(withTitles:["Standard","Inverted"])
+        scrollDirection.target=self;scrollDirection.action=#selector(extrasChanged(_:));scrollDirection.setAccessibilityLabel("Scroll direction")
+        column.addFull(hmSettingRow("Scroll direction","Inverted swaps which way you twist to scroll up and which to scroll down.",scrollDirection))
         column.addHeader("Tap to click")
         clickSound.setAccessibilityLabel("Click sound");clickSound.onChange={[weak self] _ in self?.changed(nil)}
         column.addFull(hmSettingRow("Click sound","Plays on this Mac when a tap on the case clicks.",clickSound))
@@ -627,16 +629,16 @@ private final class SettingsPage:NSObject {
         rkSetText(steadinessValue,String(format:"%.1f Hz",minCutoff));rkSetText(snappinessValue,String(format:"%.0f",beta))
         rkSetText(glideValue,tau<0.002 ? "Off":String(format:"%.0f ms",tau*1000))
         backTap.setOn(PointerExtras.backTapRightClick,animated:false);twistScroll.setOn(PointerExtras.twistScroll,animated:false)
-        scrollReverse.setOn(PointerExtras.scrollReverse,animated:false)
+        scrollDirection.selectItem(at:PointerExtras.scrollReverse ? 1:0)
         scrollSpeed.doubleValue=PointerExtras.scrollSpeed;rkSetText(scrollSpeedValue,String(format:"%.1f×",PointerExtras.scrollSpeed))
-        scrollSpeed.isEnabled=twistScroll.isOn;scrollReverse.alphaValue=twistScroll.isOn ? 1:0.4
+        scrollSpeed.isEnabled=twistScroll.isOn;scrollDirection.isEnabled=twistScroll.isOn
     }
     @objc private func extrasChanged(_ sender:Any?){
         let d=UserDefaults.standard
         d.set((Self.cutoff(steadiness.doubleValue)*10).rounded()/10,forKey:"smoothingMinCutoff")
         d.set(snappiness.doubleValue.rounded(),forKey:"smoothingBeta")
         d.set(glide.doubleValue<0.002 ? 0:(glide.doubleValue*1000).rounded()/1000,forKey:"glideTime")
-        d.set(backTap.isOn,forKey:"backTapRightClick");d.set(twistScroll.isOn,forKey:"twistScroll");d.set(scrollReverse.isOn,forKey:"scrollReverse")
+        d.set(backTap.isOn,forKey:"backTapRightClick");d.set(twistScroll.isOn,forKey:"twistScroll");d.set(scrollDirection.indexOfSelectedItem==1,forKey:"scrollReverse")
         d.set((scrollSpeed.doubleValue*10).rounded()/10,forKey:"scrollSpeed")
         applyExtras()
     }
