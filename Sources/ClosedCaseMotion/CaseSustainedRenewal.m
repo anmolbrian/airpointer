@@ -27,7 +27,7 @@
 //   30 BASELINE_UNAVAILABLE No fresh accelerometer+gyro within 15 s with the lid open. AirPods also
 //                           connected to an iPhone do this: setup answered, then no motion or UARP.
 //   31 IDENTITY_UNAVAILABLE The earbud never confirmed its identity (root Model/VERSION).
-//   32 WRONG_EARBUD_MODEL   The earbud's firmware ModelName is not AirPods Pro.
+//   32 WRONG_EARBUD_MODEL   The earbud's firmware ModelName is not an AirPods earbud.
 //   34 WRONG_CASE_MODEL     Endpoint 1's firmware ModelName is not an AirPods charging case.
 //   35 CASE_LOST            The case endpoint announced itself unreachable.
 //   36 CASE_DECLINED        The case refused or rejected the diagnostic (MTIC) request.
@@ -88,7 +88,7 @@ static const HelperExitInfo helperExitTable[]={
     {HelperExitNoSessionReply,"NO_SESSION_REPLY","AACP channel opened but nothing answered"},
     {HelperExitBaselineUnavailable,"BASELINE_UNAVAILABLE","no fresh open-lid motion"},
     {HelperExitIdentityUnavailable,"IDENTITY_UNAVAILABLE","earbud identity not confirmed"},
-    {HelperExitWrongEarbudModel,"WRONG_EARBUD_MODEL","earbud ModelName is not AirPods Pro"},
+    {HelperExitWrongEarbudModel,"WRONG_EARBUD_MODEL","earbud ModelName is not an AirPods earbud"},
     {HelperExitWrongCaseModel,"WRONG_CASE_MODEL","endpoint is not an AirPods charging case"},
     {HelperExitCaseLost,"CASE_LOST","charging case became unreachable"},
     {HelperExitCaseDeclined,"CASE_DECLINED","case declined the diagnostic request"},
@@ -403,7 +403,9 @@ static NSString *foldedModelName(NSString *name) {
 }
 static BOOL earbudModelMatches(NSString *name) {
     NSString *folded=foldedModelName(name);
-    return [folded hasPrefix:@"airpods pro"] && ![folded containsString:@"case"];
+    // Any AirPods earbud with motion sensors (AirPods 3 and 4 answer "AirPods"; Pro models "AirPods Pro…").
+    // AirPods Max have no case, and the app's product list already leaves out models without a gyroscope.
+    return [folded hasPrefix:@"airpods"] && ![folded containsString:@"case"] && ![folded containsString:@"max"];
 }
 static BOOL chargingCaseModelMatches(NSString *name) {
     NSString *folded=foldedModelName(name);
@@ -1092,7 +1094,8 @@ static void hardeningChecks(void) {
 
     // Firmware ModelName matching: tolerant, but still tells the earbud from the case.
     check(earbudModelMatches(@"AirPods Pro") && earbudModelMatches(@" airpods pro\n") && earbudModelMatches(@"AirPods Pro 3") && earbudModelMatches(@"AIRPODS PRO\0"),@"earbud ModelName match ignores case, padding and a model suffix");
-    check(!earbudModelMatches(@"AirPods Charging Case") && !earbudModelMatches(@"AirPods") && !earbudModelMatches(@"Invalid model response") && !earbudModelMatches(nil),@"earbud match rejects the case, other models and missing names");
+    check(!earbudModelMatches(@"AirPods Charging Case") && !earbudModelMatches(@"AirPods Max") && !earbudModelMatches(@"Invalid model response") && !earbudModelMatches(nil),@"earbud match rejects the case, other models and missing names");
+    check(earbudModelMatches(@"AirPods") && earbudModelMatches(@"AirPods 4") && earbudModelMatches(@"AirPods (3rd generation)"),@"earbud match accepts AirPods 3 and 4 names");
     check(chargingCaseModelMatches(@"AirPods Charging Case") && chargingCaseModelMatches(@"airpods charging case ") && chargingCaseModelMatches(@"AirPods Pro Charging Case"),@"case ModelName match ignores case and padding");
     check(chargingCaseModelMatches(@"MagSafe Charging Case (USB-C)") && chargingCaseModelMatches(@" magsafe charging case "),@"case ModelName match accepts the AirPods Pro 2 USB-C MagSafe case");
     check(!chargingCaseModelMatches(@"MagSafe Battery Pack") && !chargingCaseModelMatches(@"MagSafe"),@"case match rejects other MagSafe accessories (musubipapi/airpointer#9)");
