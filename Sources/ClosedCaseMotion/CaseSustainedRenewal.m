@@ -1094,7 +1094,8 @@ static void hardeningChecks(void) {
     check(earbudModelMatches(@"AirPods Pro") && earbudModelMatches(@" airpods pro\n") && earbudModelMatches(@"AirPods Pro 3") && earbudModelMatches(@"AIRPODS PRO\0"),@"earbud ModelName match ignores case, padding and a model suffix");
     check(!earbudModelMatches(@"AirPods Charging Case") && !earbudModelMatches(@"AirPods") && !earbudModelMatches(@"Invalid model response") && !earbudModelMatches(nil),@"earbud match rejects the case, other models and missing names");
     check(chargingCaseModelMatches(@"AirPods Charging Case") && chargingCaseModelMatches(@"airpods charging case ") && chargingCaseModelMatches(@"AirPods Pro Charging Case"),@"case ModelName match ignores case and padding");
-    check(chargingCaseModelMatches(@"MagSafe Charging Case (USB-C)"),@"case match accepts the AirPods Pro 2 MagSafe case name (local edit)");
+    check(chargingCaseModelMatches(@"MagSafe Charging Case (USB-C)") && chargingCaseModelMatches(@" magsafe charging case "),@"case ModelName match accepts the AirPods Pro 2 USB-C MagSafe case");
+    check(!chargingCaseModelMatches(@"MagSafe Battery Pack") && !chargingCaseModelMatches(@"MagSafe"),@"case match rejects other MagSafe accessories (musubipapi/airpointer#9)");
     check(!chargingCaseModelMatches(@"AirPods Pro") && !chargingCaseModelMatches(@"Charging Case") && !chargingCaseModelMatches(nil),@"case match rejects the earbud name and non-AirPods names");
     CaseSnapshot *root=CaseSnapshot.new;root.targetBound=YES;root.rootModelSent=YES;
     [root handleMessage:uarpMessage(4,1,testModel(@"AirPods Pro 3"))];
