@@ -130,6 +130,12 @@ export class Grip {
    throw Error('Aim in a different direction. Return to center, then aim toward the top.');
   this[name]=axis;
  }
+ // Local edit: degrees of twist about the pointing axis (the axis square to both aim edges), for twist-to-scroll.
+ roll(q){
+  if(!this.center||!this.right||!this.up)return null;
+  const axis=cross(this.right,this.up),n=norm(axis);if(n<1e-9)return null;
+  return dot(this.relative(q),axis.map(x=>x/n))*180/Math.PI;
+ }
  point(q){
   if(!this.center||!this.right||!this.up)return null;
   const v=this.relative(q),r=this.right,u=this.up,rr=dot(r,r),uu=dot(u,u),ru=dot(r,u),d=rr*uu-ru*ru;

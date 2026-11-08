@@ -19,10 +19,30 @@ struct ClosedCasePointerFilter{
         let derivativeAlpha=alpha(3)
         velocity.x+=derivativeAlpha*((point.x-previous.x)/dt-velocity.x)
         velocity.y+=derivativeAlpha*((point.y-previous.y)/dt-velocity.y)
-        let cutoff=min(25,3.5+8*hypot(velocity.x,velocity.y)),a=alpha(cutoff)
+        // Local edit: smoother at rest (was 3.5 Hz / 8). Tune with `defaults write local.airpointer smoothingMinCutoff/smoothingBeta`.
+        let cutoff=min(25,Self.tuning("smoothingMinCutoff",1.2,0.2...10)+Self.tuning("smoothingBeta",14,0...60)*hypot(velocity.x,velocity.y)),a=alpha(cutoff)
         let next=CGPoint(x:filtered.x+a*(point.x-filtered.x),y:filtered.y+a*(point.y-filtered.y))
         self.previous=point;self.filtered=next;self.time=stamp;return next
     }
+    static func tuning(_ key:String,_ fallback:Double,_ range:ClosedRange<Double>)->Double{
+        guard UserDefaults.standard.object(forKey:key) != nil else{return fallback}
+        let value=UserDefaults.standard.double(forKey:key)
+        return value.isFinite ? min(range.upperBound,max(range.lowerBound,value)):fallback
+    }
+}
+
+// Local edit: settings for smoothing, right-click and twist-to-scroll. Read live, so Settings changes apply at once.
+enum PointerExtras{
+    static let defaults:[String:Any]=["smoothingMinCutoff":1.2,"smoothingBeta":14.0,"glideTime":0.03,
+                                      "backTapRightClick":true,"twistScroll":true,"scrollSpeed":1.0,"scrollReverse":false]
+    static func flag(_ key:String)->Bool{UserDefaults.standard.object(forKey:key) as? Bool ?? (defaults[key] as? Bool ?? false)}
+    static var backTapRightClick:Bool{flag("backTapRightClick")}
+    static var twistScroll:Bool{flag("twistScroll")}
+    static var scrollReverse:Bool{flag("scrollReverse")}
+    static var scrollSpeed:Double{ClosedCasePointerFilter.tuning("scrollSpeed",1,0.2...4)}
+    // Twist past this many degrees to start scrolling; it stops 5° inside it.
+    static let twistStart=15.0
+    static func resetSmoothing(){for key in ["smoothingMinCutoff","smoothingBeta","glideTime"]{UserDefaults.standard.removeObject(forKey:key)}}
 }
 
 func readClosedCaseMotionPipe(_ stream:FileHandle) throws ->Data?{
@@ -193,7 +213,7 @@ final class ClosedCaseMotion {
         for(const row of rawRows)rawFusion.feed(row);
         ({ready:rawFusion.ready,generation:rawFusion.generation,measured:rawFusion.measured,
           gyro:rawFusion.last[12] || {},accel:rawFusion.last[11] || {},g:rawFusion.accel&&rawFusion.accel.vector,
-          point:rawGrip.point(rawFusion.q),q:rawFusion.q,edges:rawGrip.edges!==null})
+          point:rawGrip.point(rawFusion.q),roll:rawGrip.roll(rawFusion.q),q:rawFusion.q,edges:rawGrip.edges!==null})
         """)?.toDictionary() as? [String:Any]
     }
 }
@@ -471,7 +491,10 @@ final class ClosedCaseSession: NSObject {
     private var tapLearner:ClosedCaseTapLearner?,onTapLearning:((ClosedCaseTapLearner.Event)->Void)?
     func learnTaps(_ handler:@escaping(ClosedCaseTapLearner.Event)->Void){tapLearner=ClosedCaseTapLearner();onTapLearning=handler}
     func stopLearningTaps(){tapLearner=nil;onTapLearning=nil}
-    var tapDirection:[Double]?{didSet{tapDetector.direction=tapDirection.flatMap{$0.count==3 ? SIMD3($0[0],$0[1],$0[2]):nil} ?? ClosedCaseTapDetector.tapDirection}}
+    var tapDirection:[Double]?{didSet{
+        tapDetector.direction=tapDirection.flatMap{$0.count==3 ? SIMD3($0[0],$0[1],$0[2]):nil} ?? ClosedCaseTapDetector.tapDirection
+        backTapDetector.direction = -tapDetector.direction
+    }}
     var onEnded:((String?)->Void)?
     var opensLidFirst=false
     private(set) var lostContact=false
@@ -516,10 +539,17 @@ final class ClosedCaseSession: NSObject {
     private var connected=false, confirmed=false, ready=false, stopping=false, held=false
     private var enabled=false{didSet{if enabled != oldValue{CursorSize.shared.pointingChanged(enabled)}}}
     private var generation=0, lastStatus=0.0, lastHost=0.0, pressedAt=0.0, loggedReady=false
+    private var shown:CGPoint?, lastGlide=0.0
     private var smooth=CGPoint(x:0.5,y:0.5), feedError:String?
     private var pointerFilter=ClosedCasePointerFilter()
     private var readStats=(count:0,total:0.0,longest:0.0,since:0.0)
     private var tapDetector=ClosedCaseTapDetector(),recentPoints:[(t:Double,point:CGPoint)]=[],tapHold:CGPoint?
+    // Local edit: a tap on the back pushes the sensor the opposite way; it right-clicks. Taps from the other side
+    // within echoGap of an accepted tap are the case rocking back, not a new tap.
+    private var backTapDetector:ClosedCaseTapDetector={var d=ClosedCaseTapDetector();d.direction = -ClosedCaseTapDetector.tapDirection;return d}()
+    private var lastAcceptedTap:(t:Double,back:Bool)?
+    private static let echoGap=0.35
+    private var scrolling=false,scrollHold:CGPoint?,scrollRate=0.0,scrollCarry=0.0,lastScrollTick=0.0
     private var lastClick:(uptime:Double,position:CGPoint,count:Int64)?
     private var closedAt=0.0,startedAt=0.0,helperStartedAt=0.0,stoppedAt=0.0,busyRetries=0
     private var activity:NSObjectProtocol?
@@ -760,6 +790,8 @@ final class ClosedCaseSession: NSObject {
         if stopping && stoppedAt>0 && now-stoppedAt>3{if !signalled{signalled=true;helper?.terminate()};return}
         if now-lastStatus>0.2{lastStatus=now;readStatus()}
         if !stopping && helper?.isRunning == true{readMotion()}
+        glideCursor(now)
+        tickScroll(now)
         if enabled && closedCaseShouldPause(motionAge:now-lastHost){
             pause("Lost the case’s motion. Pointing resumes when it’s back.");resumeAfterDrop=true
         }
@@ -825,18 +857,31 @@ final class ClosedCaseSession: NSObject {
             for note in tapDetector.ignored{try? log?.write(contentsOf:Data("tap: \(note)\n".utf8));tapTest?(.rejected(note))}
             tapDetector.ignored=[]
             // Ahead of the orientation code, which can take tens of milliseconds now and then.
-            for event in tapEvents{
+            // Local edit: back taps (right-click) come from a second detector looking for the opposite push.
+            let backOn=tapLearner==nil && tapTest==nil && enabled && calibrated && PointerExtras.backTapRightClick
+            let backEvents=backOn ? backTapDetector.feed(rows):backTapDetector.reset()
+            backTapDetector.ignored=[]
+            func tapTime(_ e:ClosedCaseTapDetector.Event)->Double{if case .tap(let since,_,_)=e{return since};return .infinity}
+            let merged=(tapEvents.map{($0,false)}+backEvents.map{($0,true)}).sorted{tapTime($0.0)<tapTime($1.0)}
+            for (event,back) in merged{
                 switch event {
                 case .release:tapHold=nil
                 case .tap(let since,let jolt,let repeated):
+                    if let last=lastAcceptedTap,last.back != back,since-last.t<Self.echoGap{
+                        try? log?.write(contentsOf:Data(String(format:"tap: ignored %@ tap at %.2f, echo of the %@ tap\n",back ? "back":"front",since,last.back ? "back":"front").utf8))
+                        continue
+                    }
+                    lastAcceptedTap=(since,back)
                     let at=recentPoints.last{$0.t<since}?.point ?? smooth;tapHold=at
                     if enabled{
+                        let control=CGEventSource.flagsState(.combinedSessionState).contains(.maskControl)
+                        let right=back || control
                         let decided=ProcessInfo.processInfo.systemUptime
-                        if let tapTest{tapTest(.click)}else{postClick(at)}
+                        if let tapTest{tapTest(.click)}else{postClick(at,right:right)}
                         let clicked=ProcessInfo.processInfo.systemUptime
                         if clickSound{TapClickSound.shared.play()}
                         let sounded=ProcessInfo.processInfo.systemUptime
-                        try? log?.write(contentsOf:Data(String(format:"tap: click at %.2f, jolt %.2f g, %.0f ms after it began%@, %.0f ms after arrival, %.1f ms reading, %.1f ms posting, %.1f ms sound\n",since,jolt,1e3*((rows.last?[2] ?? 0)*1e-6-since),repeated ? ", repeat":"",1e3*(decided-(rows.last?[3] ?? decided)),1e3*(decided-readAt),1e3*(clicked-decided),1e3*(sounded-clicked)).utf8))
+                        try? log?.write(contentsOf:Data(String(format:"tap: %@click at %.2f, jolt %.2f g, %.0f ms after it began%@, %.0f ms after arrival, %.1f ms reading, %.1f ms posting, %.1f ms sound\n",right ? (back ? "right (back tap) ":"right (control) "):"",since,jolt,1e3*((rows.last?[2] ?? 0)*1e-6-since),repeated ? ", repeat":"",1e3*(decided-(rows.last?[3] ?? decided)),1e3*(decided-readAt),1e3*(clicked-decided),1e3*(sounded-clicked)).utf8))
                     }
                 }
             }
@@ -878,12 +923,13 @@ final class ClosedCaseSession: NSObject {
             }
             guard calibrated,let point=result["point"] as? [Double],point.count==2,point.allSatisfy(\.isFinite) else{return}
             let x=0.5+(point[0]-0.5)*speed,y=0.5+(point[1]-0.5)*speed
-            if let tapHold{smooth=tapHold}else{
+            updateScroll(result["roll"] as? Double)
+            if let tapHold{smooth=tapHold}else if let scrollHold{smooth=scrollHold}else{
                 smooth=pointerFilter.feed(CGPoint(x:min(1,max(0,x)),y:min(1,max(0,y))),at:stamp*1e-6)
                 recentPoints.append((stamp*1e-6,smooth));while let first=recentPoints.first,stamp*1e-6-first.t>0.5{recentPoints.removeFirst()}
             }
             setAim(smooth);onPoint?(smooth)
-            if enabled && ProcessInfo.processInfo.systemUptime-host<0.25{postCursor()}
+            // Local edit: the cursor is now moved by glideCursor() on every tick, not once per Bluetooth batch.
         }catch{fail(error.localizedDescription)}
     }
     // How long a read of motion holds up the main run loop, for the session log.
@@ -920,14 +966,63 @@ final class ClosedCaseSession: NSObject {
               let number=NSScreen.screens[screenIndex].deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else{return nil}
         return CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
     }
-    private func postCursor(){
+    // Local edit: twist-to-scroll. Past twistStart degrees of twist the pointer holds still and the page scrolls,
+    // faster the further the twist; back inside twistStart-5 it stops and pointing resumes.
+    private func updateScroll(_ roll:Double?){
+        guard PointerExtras.twistScroll,enabled,tapHold==nil,let roll,roll.isFinite else{endScroll();return}
+        let start=PointerExtras.twistStart,stop=start-5,size=abs(roll)
+        if !scrolling{
+            guard size>=start else{return}
+            scrolling=true;scrollHold=smooth;scrollCarry=0
+            try? log?.write(contentsOf:Data(String(format:"scroll: started at %.0f° twist\n",roll).utf8))
+        }else if size<stop{endScroll();return}
+        // Pixels per second: 25 per degree past the stop edge, times the speed setting.
+        let sign:Double=(roll>0) != PointerExtras.scrollReverse ? -1:1
+        scrollRate=sign*25*(size-stop)*PointerExtras.scrollSpeed
+    }
+    private func endScroll(){
+        guard scrolling else{return}
+        scrolling=false;scrollHold=nil;scrollRate=0;scrollCarry=0
+        pointerFilter=ClosedCasePointerFilter()
+        try? log?.write(contentsOf:Data("scroll: ended\n".utf8))
+    }
+    private func tickScroll(_ now:Double){
+        let dt=lastScrollTick>0 ? min(0.05,max(0,now-lastScrollTick)):0;lastScrollTick=now
+        guard scrolling else{return}
+        guard enabled,now-lastHost<0.25 else{endScroll();return}
+        scrollCarry+=scrollRate*dt
+        let pixels=scrollCarry.rounded(.towardZero)
+        guard abs(pixels)>=1,let event=CGEvent(scrollWheelEvent2Source:nil,units:.pixel,wheelCount:1,wheel1:Int32(pixels),wheel2:0,wheel3:0) else{return}
+        scrollCarry-=pixels;event.post(tap:.cghidEventTap)
+    }
+    // Local edit: eases the shown cursor toward the filtered target every tick, so motion that arrives in
+    // Bluetooth bursts glides instead of jumping. Time constant: `defaults write local.airpointer glideTime` (seconds).
+    private func glideCursor(_ now:Double){
+        let dt=lastGlide>0 ? min(0.05,max(0,now-lastGlide)):0.005;lastGlide=now
+        guard enabled,now-lastHost<0.25 else{shown=nil;return}
+        let tau=ClosedCasePointerFilter.tuning("glideTime",0.03,0...0.2)
+        let k=tau<=0 ? 1:1-exp(-dt/tau)
+        let from=shown ?? smooth
+        let next=CGPoint(x:from.x+(smooth.x-from.x)*k,y:from.y+(smooth.y-from.y)*k)
+        let moved=shown.map{hypot($0.x-next.x,$0.y-next.y)} ?? 1
+        shown=next
+        if moved>0.00003{postCursor(next)}
+    }
+    private func postCursor(_ point:CGPoint?=nil){
         guard let bounds=pointerBounds(),
-              let event=CGEvent(mouseEventSource:nil,mouseType:.mouseMoved,mouseCursorPosition:screenPoint(smooth,bounds:bounds),mouseButton:.left) else{pause();return}
+              let event=CGEvent(mouseEventSource:nil,mouseType:.mouseMoved,mouseCursorPosition:screenPoint(point ?? smooth,bounds:bounds),mouseButton:.left) else{pause();return}
         event.post(tap:.cghidEventTap)
     }
-    private func postClick(_ point:CGPoint){
+    private func postClick(_ point:CGPoint,right:Bool=false){
         guard let bounds=pointerBounds() else{pause();return}
         let position=screenPoint(point,bounds:bounds),now=ProcessInfo.processInfo.systemUptime
+        if right{
+            // Local edit: right-click, from a back tap or Control + tap.
+            guard let down=CGEvent(mouseEventSource:nil,mouseType:.rightMouseDown,mouseCursorPosition:position,mouseButton:.right),
+                  let up=CGEvent(mouseEventSource:nil,mouseType:.rightMouseUp,mouseCursorPosition:position,mouseButton:.right) else{return}
+            down.flags=[];up.flags=[]
+            down.post(tap:.cghidEventTap);up.post(tap:.cghidEventTap);lastClick=nil;return
+        }
         let count=lastClick.map{now-$0.uptime<NSEvent.doubleClickInterval && hypot($0.position.x-position.x,$0.position.y-position.y)<8 ? $0.count+1:1} ?? 1
         guard let down=CGEvent(mouseEventSource:nil,mouseType:.leftMouseDown,mouseCursorPosition:position,mouseButton:.left),
               let up=CGEvent(mouseEventSource:nil,mouseType:.leftMouseUp,mouseCursorPosition:position,mouseButton:.left) else{return}
