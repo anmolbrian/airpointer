@@ -30,7 +30,7 @@
 |---|---|
 | AirPods Pro 3, macOS 26, Apple Silicon | Tested on one Mac with one pair |
 | AirPods Pro 2 (USB-C), macOS 27, Apple Silicon | Tested on one Mac with one pair |
-| AirPods Pro 2 (Lightning), AirPods Pro (1st generation), AirPods 3, AirPods 4, AirPods 4 ANC | Experimental, not tested. They have the gyroscope pointing needs, but their cases may handle the lid-closed requests differently. |
+| AirPods Pro 2 (Lightning), AirPods Pro (1st generation), AirPods 3, AirPods 4, AirPods 4 ANC, AirPods 5 | Experimental, not tested. They have the gyroscope pointing needs, but their cases may handle the lid-closed requests differently. |
 | AirPods 1 and 2 | Not supported: no gyroscope |
 | AirPods Max | Not supported: no case |
 | AirPods paired with your Mac | Required |

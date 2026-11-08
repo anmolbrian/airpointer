@@ -17,7 +17,9 @@ struct ClosedCaseAirPods:Equatable {
     // AirPods 1 and 2 have no gyroscope, and AirPods Max have no case, so they're left out.
     static let models=["0x2024":"AirPods Pro 2","0x2027":"AirPods Pro 3",
                        "0x2014":"AirPods Pro 2 (Lightning, experimental)","0x200e":"AirPods Pro (experimental)",
-                       "0x2013":"AirPods 3 (experimental)","0x2019":"AirPods 4 (experimental)","0x201b":"AirPods 4 ANC (experimental)"]
+                       "0x2013":"AirPods 3 (experimental)","0x2019":"AirPods 4 (experimental)","0x201b":"AirPods 4 ANC (experimental)",
+                       // AirPods 5 (2026): product ID from AirPodsDesktop and a paired pair reporting it; head tracking per Apple.
+                       "0x2030":"AirPods 5 (experimental)"]
     static let tested:Set<UInt16>=[0x2024,0x2027]
     static let targetURL=airPointerDataFolder.appendingPathComponent("closed-case-target.txt")
 
