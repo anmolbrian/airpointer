@@ -19,7 +19,7 @@ struct ClosedCasePointerFilter{
         let derivativeAlpha=alpha(3)
         velocity.x+=derivativeAlpha*((point.x-previous.x)/dt-velocity.x)
         velocity.y+=derivativeAlpha*((point.y-previous.y)/dt-velocity.y)
-        // Local edit: smoother at rest (was 3.5 Hz / 8). Tune with `defaults write local.airpointer smoothingMinCutoff/smoothingBeta`.
+        // Smoother at rest (was 3.5 Hz / 8). Tune with `defaults write local.airpointer smoothingMinCutoff/smoothingBeta`.
         let cutoff=min(25,Self.tuning("smoothingMinCutoff",1.2,0.2...10)+Self.tuning("smoothingBeta",14,0...60)*hypot(velocity.x,velocity.y)),a=alpha(cutoff)
         let next=CGPoint(x:filtered.x+a*(point.x-filtered.x),y:filtered.y+a*(point.y-filtered.y))
         self.previous=point;self.filtered=next;self.time=stamp;return next
@@ -31,7 +31,7 @@ struct ClosedCasePointerFilter{
     }
 }
 
-// Local edit: settings for smoothing, right-click and twist-to-scroll. Read live, so Settings changes apply at once.
+// Settings for smoothing, right-click and twist-to-scroll. Read live, so Settings changes apply at once.
 enum PointerExtras{
     static let defaults:[String:Any]=["smoothingMinCutoff":1.2,"smoothingBeta":14.0,"glideTime":0.03,
                                       "backTapRightClick":true,"twistScroll":true,"scrollSpeed":1.0,"scrollReverse":false]
@@ -544,7 +544,7 @@ final class ClosedCaseSession: NSObject {
     private var pointerFilter=ClosedCasePointerFilter()
     private var readStats=(count:0,total:0.0,longest:0.0,since:0.0)
     private var tapDetector=ClosedCaseTapDetector(),recentPoints:[(t:Double,point:CGPoint)]=[],tapHold:CGPoint?
-    // Local edit: a tap on the back pushes the sensor the opposite way; it right-clicks. Taps from the other side
+    // A tap on the back pushes the sensor the opposite way; it right-clicks. Taps from the other side
     // within echoGap of an accepted tap are the case rocking back, not a new tap.
     private var backTapDetector:ClosedCaseTapDetector={var d=ClosedCaseTapDetector();d.direction = -ClosedCaseTapDetector.tapDirection;return d}()
     private var lastAcceptedTap:(t:Double,back:Bool)?
@@ -857,7 +857,7 @@ final class ClosedCaseSession: NSObject {
             for note in tapDetector.ignored{try? log?.write(contentsOf:Data("tap: \(note)\n".utf8));tapTest?(.rejected(note))}
             tapDetector.ignored=[]
             // Ahead of the orientation code, which can take tens of milliseconds now and then.
-            // Local edit: back taps (right-click) come from a second detector looking for the opposite push.
+            // Back taps (right-click) come from a second detector looking for the opposite push.
             let backOn=tapLearner==nil && tapTest==nil && enabled && calibrated && PointerExtras.backTapRightClick
             let backEvents=backOn ? backTapDetector.feed(rows):backTapDetector.reset()
             backTapDetector.ignored=[]
@@ -929,7 +929,7 @@ final class ClosedCaseSession: NSObject {
                 recentPoints.append((stamp*1e-6,smooth));while let first=recentPoints.first,stamp*1e-6-first.t>0.5{recentPoints.removeFirst()}
             }
             setAim(smooth);onPoint?(smooth)
-            // Local edit: the cursor is now moved by glideCursor() on every tick, not once per Bluetooth batch.
+            // The cursor is now moved by glideCursor() on every tick, not once per Bluetooth batch.
         }catch{fail(error.localizedDescription)}
     }
     // How long a read of motion holds up the main run loop, for the session log.
@@ -966,7 +966,7 @@ final class ClosedCaseSession: NSObject {
               let number=NSScreen.screens[screenIndex].deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else{return nil}
         return CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
     }
-    // Local edit: twist-to-scroll. Past twistStart degrees of twist the pointer holds still and the page scrolls,
+    // Twist-to-scroll. Past twistStart degrees of twist the pointer holds still and the page scrolls,
     // faster the further the twist; back inside twistStart-5 it stops and pointing resumes.
     private func updateScroll(_ roll:Double?){
         guard PointerExtras.twistScroll,enabled,tapHold==nil,let roll,roll.isFinite else{endScroll();return}
@@ -995,7 +995,7 @@ final class ClosedCaseSession: NSObject {
         guard abs(pixels)>=1,let event=CGEvent(scrollWheelEvent2Source:nil,units:.pixel,wheelCount:1,wheel1:Int32(pixels),wheel2:0,wheel3:0) else{return}
         scrollCarry-=pixels;event.post(tap:.cghidEventTap)
     }
-    // Local edit: eases the shown cursor toward the filtered target every tick, so motion that arrives in
+    // Eases the shown cursor toward the filtered target every tick, so motion that arrives in
     // Bluetooth bursts glides instead of jumping. Time constant: `defaults write local.airpointer glideTime` (seconds).
     private func glideCursor(_ now:Double){
         let dt=lastGlide>0 ? min(0.05,max(0,now-lastGlide)):0.005;lastGlide=now
@@ -1017,7 +1017,7 @@ final class ClosedCaseSession: NSObject {
         guard let bounds=pointerBounds() else{pause();return}
         let position=screenPoint(point,bounds:bounds),now=ProcessInfo.processInfo.systemUptime
         if right{
-            // Local edit: right-click, from a back tap or Control + tap.
+            // Right-click, from a back tap or Control + tap.
             guard let down=CGEvent(mouseEventSource:nil,mouseType:.rightMouseDown,mouseCursorPosition:position,mouseButton:.right),
                   let up=CGEvent(mouseEventSource:nil,mouseType:.rightMouseUp,mouseCursorPosition:position,mouseButton:.right) else{return}
             down.flags=[];up.flags=[]

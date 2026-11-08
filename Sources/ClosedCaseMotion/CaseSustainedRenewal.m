@@ -407,7 +407,7 @@ static BOOL earbudModelMatches(NSString *name) {
 }
 static BOOL chargingCaseModelMatches(NSString *name) {
     NSString *folded=foldedModelName(name);
-    // Local edit: AirPods Pro 2 (USB-C) cases name themselves e.g. "MagSafe Charging Case (USB-C)",
+    // AirPods Pro 2 (USB-C) cases name themselves e.g. "MagSafe Charging Case (USB-C)",
     // without an "AirPods" prefix. Earbuds never contain "case", so this still tells them apart.
     return ([folded hasPrefix:@"airpods"] || [folded hasPrefix:@"magsafe"]) && [folded containsString:@"charging case"];
 }

@@ -1,7 +1,7 @@
 import AppKit
 import ServiceManagement
 
-// Local edit: "Open at login", using the app's own login item (System Settings > General > Login Items).
+// "Open at login", using the app's own login item (System Settings > General > Login Items).
 // Offered once, right after AirPods setup finishes (or on the next launch for a setup finished earlier),
 // and switchable any time in Settings.
 enum LoginItem {

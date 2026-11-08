@@ -185,7 +185,7 @@ final class App: NSObject, NSApplicationDelegate {
 struct AirPointerMain {
 static func main() {
 if CommandLine.arguments.contains("--unregister-login-item") {
-    // Local edit: used by the uninstall script to remove the login item before the app is deleted.
+    // Used by the uninstall script to remove the login item before the app is deleted.
     exit(LoginItem.set(false) ? 0:1)
 } else if CommandLine.arguments.contains("--check-audio-output-policy") {
     runAudioOutputPolicyChecks()

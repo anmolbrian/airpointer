@@ -517,7 +517,7 @@ private final class SettingsPage:NSObject {
     private let clickSound=InkSwitch()
     private let shortcutControl=PointerShortcutControl()
     private let speedValue=rkLabel("1.0×",13,.medium)
-    // Local edit: smoothing, right-click and scroll settings, written straight to the preferences the session reads live.
+    // Smoothing, right-click and scroll settings, written straight to the preferences the session reads live.
     private let steadiness=NSSlider(value:0.5,minValue:0,maxValue:1,target:nil,action:nil)
     private let snappiness=NSSlider(value:14,minValue:0,maxValue:40,target:nil,action:nil)
     private let glide=NSSlider(value:0.03,minValue:0,maxValue:0.1,target:nil,action:nil)
