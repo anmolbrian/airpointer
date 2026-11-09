@@ -529,7 +529,7 @@ private final class SettingsPage:NSObject {
         rkSetText(loginNote,LoginItem.needsApproval ? "Allow AirPointer in System Settings → General → Login Items.":"Starts AirPointer in the menu bar when you log in.")
     }
     private let scrollSpeed=NSSlider(value:1,minValue:0.3,maxValue:3,target:nil,action:nil)
-    private let backFirmness=NSSlider(value:0.3,minValue:0.15,maxValue:0.8,target:nil,action:nil)
+    private let backFirmness=NSSlider(value:0.25,minValue:0.15,maxValue:0.8,target:nil,action:nil)
     private let backFirmnessValue=rkLabel("",13,.medium)
     private let steadinessValue=rkLabel("",13,.medium),snappinessValue=rkLabel("",13,.medium),glideValue=rkLabel("",13,.medium),scrollSpeedValue=rkLabel("",13,.medium)
     // Steadiness 0…1 maps to the filter's resting cutoff 3.5 Hz…0.4 Hz on a log scale (default 1.2 Hz ≈ 0.49).

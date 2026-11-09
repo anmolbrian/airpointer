@@ -41,7 +41,7 @@ enum PointerExtras{
     static var scrollReverse:Bool{flag("scrollReverse")}
     static var scrollSpeed:Double{ClosedCasePointerFilter.tuning("scrollSpeed",1,0.2...4)}
     // The weakest push that counts as a back tap. Shifting your grip is usually softer.
-    static var backTapFirmness:Double{ClosedCasePointerFilter.tuning("backTapFirmness",0.3,0.15...0.8)}
+    static var backTapFirmness:Double{ClosedCasePointerFilter.tuning("backTapFirmness",0.25,0.15...0.8)}
     // Twist past this many degrees to start scrolling; it stops 5° inside it.
     static let twistStart=15.0
     static func resetSmoothing(){for key in ["smoothingMinCutoff","smoothingBeta","glideTime"]{UserDefaults.standard.removeObject(forKey:key)}}
@@ -550,7 +550,7 @@ final class ClosedCaseSession: NSObject {
     // within echoGap of an accepted tap are the case rocking back, not a new tap.
     // Nearly every front tap also trips the back detector as the case rocks back, so a back tap waits
     // backWindow for a front impact: the earlier, firmer push decides. Front taps click at once.
-    private var backTapDetector:ClosedCaseTapDetector={var d=ClosedCaseTapDetector();d.direction = -ClosedCaseTapDetector.tapDirection;d.alignmentNeeded=0.8;return d}()
+    private var backTapDetector:ClosedCaseTapDetector={var d=ClosedCaseTapDetector();d.direction = -ClosedCaseTapDetector.tapDirection;d.alignmentNeeded=0.7;return d}()
     private var lastAcceptedTap:(impact:Double,back:Bool)?
     private var pendingBack:(since:Double,impact:Double,jolt:Double,repeated:Bool,host:Double)?
     private static let echoGap=0.35,backWindow=0.06
@@ -866,6 +866,8 @@ final class ClosedCaseSession: NSObject {
             // Back taps (right-click) come from a second detector looking for the opposite push.
             let backOn=tapLearner==nil && tapTest==nil && enabled && calibrated && PointerExtras.backTapRightClick
             let backEvents=backOn ? backTapDetector.feed(rows):backTapDetector.reset()
+            // Why a back push didn't count, so a missed back tap can be read in the session log.
+            for note in backTapDetector.ignored{logTap("back: \(note)")}
             backTapDetector.ignored=[]
             if !backOn{pendingBack=nil}
             for event in backEvents{
@@ -886,7 +888,9 @@ final class ClosedCaseSession: NSObject {
                     let impact=tapDetector.lastTap
                     if let p=pendingBack,abs(p.impact-impact)<Self.echoGap{
                         pendingBack=nil
-                        if p.impact<impact-0.002,p.jolt>=jolt*1.15,p.jolt>=PointerExtras.backTapFirmness{
+                        // A back tap held against the palm bounces forward almost as hard, so the earlier back push wins
+                        // unless the front one is clearly (1.6x) firmer.
+                        if p.impact<impact-0.002,p.jolt*1.6>=jolt,p.jolt>=PointerExtras.backTapFirmness{
                             acceptTap(since:p.since,impact:p.impact,jolt:p.jolt,repeated:p.repeated,back:true,note:String(format:", front push %.2f g came after",jolt))
                             continue
                         }
